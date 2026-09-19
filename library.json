@@ -12,10 +12,10 @@
 	"repository":
 	{
 		"type": "git",
-		"url": "https://github.com/xreef/SimpleFTPServer"
+		"url": "https://github.com/VSelitskiy/SimpleFTPServer"
 	},
 	"url": "https://www.mischianti.org",
 	"frameworks": "Arduino",
-    "version": "3.0.2",
+    "version": "3.0.2-vs.1",
 	"platforms": "*"
 }
