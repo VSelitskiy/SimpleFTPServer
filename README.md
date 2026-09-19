@@ -120,6 +120,17 @@ lib_deps =
 
 For a fixed release, replace `master` with the release tag, for example `v3.0.2-vs.1`.
 
+For the ESP32 + Wi-Fi + LittleFS configuration used to validate this fork:
+```ini
+build_flags =
+    -D DEFAULT_FTP_SERVER_NETWORK_TYPE_ESP32=6
+    -D DEFAULT_STORAGE_TYPE_ESP32=7
+```
+
+In SimpleFTPServer 3.0.2, `6` selects the standard ESP32 Wi-Fi backend (`NETWORK_ESP32`) and `7` selects LittleFS (`STORAGE_LITTLEFS`).
+
+The network flag is currently redundant because ESP32 Wi-Fi is already the upstream default, but keeping it explicit makes the tested configuration reproducible. The LittleFS flag is important: upstream 3.0.2 defaults ESP32 storage to FFat, not LittleFS.
+
 ## 🚀 Basic Usage
 
 ### Quick start (ESP32 example)
