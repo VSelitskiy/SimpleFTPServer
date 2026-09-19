@@ -1,4 +1,25 @@
-# SimpleFTPServer Library 3.0.2
+# SimpleFTPServer Library 3.0.2-vs.1
+
+> **ESP32 / FileZilla reliability fork**
+>
+> This fork is based on Renzo Mischianti's SimpleFTPServer 3.0.2 and adds a small set of ESP32 control-channel reliability fixes developed from real-device testing with FileZilla.
+>
+> The fork has been tested on **three independent devices** across these platforms:
+>
+> - ESP32-S3 + LittleFS + Wi-Fi
+> - ESP32 (classic) + LittleFS + Wi-Fi
+>
+> FileZilla was used for repeated directory listings, uploads, downloads, disconnects and reconnects.
+>
+> The additional fixes are intentionally limited to the ESP32 Wi-Fi path. No extra validation is claimed for ESP8266, RP2040, STM32, Arduino AVR or other storage/network backends.
+>
+> Fork-specific changes:
+>
+> - safely hand off an idle ESP32 FTP control session when FileZilla opens a new control connection, without replacing a session during active LIST/STOR/RETR transfers;
+> - restart the authentication timeout after a valid USER command while waiting for PASS;
+> - consume all currently available control-channel bytes until a complete FTP command line is assembled.
+>
+> See [FORK_CHANGELOG.md](FORK_CHANGELOG.md) for the fork release history.
 
 ![SimpleFTPServer Logo](resources/SimpleFTPServerLogo.png)
 
@@ -91,10 +112,13 @@ Complete tutorials and platform-specific guides by the author are available on m
 2. Restart Arduino IDE
 
 ### PlatformIO
-Add to `platformio.ini`:
+To use this fork directly from GitHub:
 ```ini
-lib_deps = xreef/SimpleFTPServer
+lib_deps =
+    https://github.com/VSelitskiy/SimpleFTPServer.git#master
 ```
+
+For a fixed release, replace `master` with the release tag, for example `v3.0.2-vs.1`.
 
 ## 🚀 Basic Usage
 
@@ -148,6 +172,11 @@ See `FtpServerKey.h` for config defines and defaults. Key settings:
 See the `examples/` folder for ready-to-use sketches for many platforms (ESP32, ESP8266, RP2040, STM32, Wio Terminal, Arduino). Adapt SSID, credentials and SD pins as needed.
 
 ## 📝 Changelog
+- 2026-09-19 3.0.2-vs.1
+  - ESP32/FileZilla control-session handoff reliability fix.
+  - Authentication timeout refresh after USER.
+  - Control-channel input draining until a complete command line is available.
+  - Tested on three independent devices across ESP32-S3 and classic ESP32, using LittleFS over Wi-Fi with FileZilla.
 - 2025-11-28 3.0.2 
   - Fix #elif define
   - Fix on SPIFM getName

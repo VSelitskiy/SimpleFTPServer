@@ -346,6 +346,52 @@ uint8_t FtpServer::handleFTP() {
 	ftpDataConn dataConn0 = dataConn;
 #endif
 
+#if FTP_SERVER_NETWORK_TYPE == NETWORK_ESP32
+    // FileZilla keeps a browsing control connection open and creates a
+    // second control connection for file transfers. SimpleFTPServer is
+    // single-session, so hand the idle session over to the new client.
+    //
+    // Never replace a session while LIST/STOR/RETR is active.
+    // The guard prevents FileZilla's browsing reconnect from immediately
+    // stealing the freshly accepted transfer session before STOR starts.
+    static uint32_t handoffGuardUntil = 0;
+
+    const bool handoffAllowed =
+        cmdStage == FTP_Cmd &&
+        transferStage == FTP_Close &&
+        client.connected() &&
+        (int32_t)(millis() - handoffGuardUntil) >= 0;
+
+    if (handoffAllowed) {
+        FTP_CLIENT_NETWORK_CLASS incomingClient = ftpServer.accept();
+
+        if (incomingClient && incomingClient.connected()) {
+            DEBUG_PRINTLN(F("New FTP control connection: handing off idle session"));
+
+            // Gracefully close the old browsing session.
+            disconnectClient();
+
+            // Promote the newly accepted connection to the active FTP client.
+            client = incomingClient;
+
+            // Reset all per-session state.
+            iniVariables();
+            millisDelay = 0;
+
+            // Start the normal FTP login sequence for the new client.
+            clientConnected();
+            millisEndConnection = millis() + 1000L * FTP_AUTH_TIME_OUT;
+            cmdStage = FTP_User;
+
+            // Avoid an immediate handoff back to FileZilla's browsing
+            // reconnect while the transfer session is authenticating.
+            handoffGuardUntil = millis() + 5000UL;
+
+            return cmdStage | (transferStage << 3) | (dataConn << 6);
+        }
+    }
+#endif
+
 	if ((int32_t) (millisDelay - millis()) <= 0) {
 		if (cmdStage == FTP_Stop) {
 			if (client.connected()) {
@@ -540,6 +586,8 @@ bool FtpServer::processCommand()
       client.println(F("331 Ok. Password required") );
       strcpy( cwdName, "/" );
       cmdStage = FTP_Pass;
+      // Start a fresh authentication timeout while waiting for PASS.
+      millisEndConnection = millis() + 1000L * FTP_AUTH_TIME_OUT;
     }
     else
     {
@@ -2246,71 +2294,69 @@ void FtpServer::abortTransfer()
 //     0 if empty line received
 //    length of cmdLine (positive) if no empty line received 
 
-int32_t FtpServer::readChar()
-{
-  int32_t rc = -1;
+int32_t FtpServer::readChar() {
+    int32_t rc = -1;
 
-  if( client.available())
-  {
-    char c = client.read();
-    DEBUG_PRINT("-");
-    DEBUG_PRINT( c );
+    while (client.available() && rc < 0) {
+        char c = client.read();
 
-    // replace single quote (') with slash to normalize path separators
-    if( c == '\'' ) {
-      c = '/';
-    }
-    if( c != '\r' ){
-      if( c != '\n' )
-      {
-        if( iCL < FTP_CMD_SIZE )
-          cmdLine[ iCL ++ ] = c;
-        else
-          rc = -2; //  Line too long
-      }
-      else
-      {
-        cmdLine[ iCL ] = 0;
-        command[ 0 ] = 0;
-        parameter = nullptr;
-        // empty line?
-        if( iCL == 0 )
-          rc = 0;
-        else
-        {
-          rc = iCL;
-          // search for space between command and parameter
-          parameter = strchr( cmdLine, ' ' );
-          if( parameter != nullptr )
-          {
-            if( parameter - cmdLine > 4 )
-              rc = -2; // Syntax error
-            else
-            {
-              strncpy( command, cmdLine, parameter - cmdLine );
-              command[ parameter - cmdLine ] = 0;
-              while( * ( ++ parameter ) == ' ' )
-                ;
-            }
-          }
-          else if( strlen( cmdLine ) > 4 )
-            rc = -2; // Syntax error.
-          else
-            strcpy( command, cmdLine );
-          iCL = 0;
+        if (c == '\'') {
+            c = '/';
         }
-      }
+
+        if (c != '\r') {
+            if (c != '\n') {
+                if (iCL < FTP_CMD_SIZE) {
+                    cmdLine[iCL++] = c;
+                } else {
+                    rc = -2;
+                }
+            } else {
+                cmdLine[iCL] = 0;
+                command[0] = 0;
+                parameter = nullptr;
+
+                if (iCL == 0) {
+                    rc = 0;
+                } else {
+                    rc = iCL;
+
+                    parameter = strchr(cmdLine, ' ');
+
+                    if (parameter != nullptr) {
+                        if (parameter - cmdLine > 4) {
+                            rc = -2;
+                        } else {
+                            strncpy(command, cmdLine, parameter - cmdLine);
+                            command[parameter - cmdLine] = 0;
+
+                            while (*(++parameter) == ' ') {
+                            }
+                        }
+                    } else if (strlen(cmdLine) > 4) {
+                        rc = -2;
+                    } else {
+                        strcpy(command, cmdLine);
+                    }
+
+                    iCL = 0;
+                }
+            }
+        }
     }
-    if( rc > 0 )
-      for( uint8_t i = 0; i < strlen( command ); i ++ )
-        command[ i ] = toupper( command[ i ] );
-    if( rc == -2 )
-    {
-      iCL = 0;
-      client.println(F("500 Syntax error"));
+
+    if (rc > 0) {
+        for (uint8_t i = 0; i < strlen(command); i++) {
+            command[i] = toupper(command[i]);
+        }
     }
-  }
-  return rc;
+
+    if (rc == -2) {
+        iCL = 0;
+        client.println(F("500 Syntax error"));
+    }
+
+    return rc;
 }
 
 bool FtpServer::haveParameter()
